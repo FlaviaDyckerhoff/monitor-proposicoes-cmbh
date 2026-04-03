@@ -1,0 +1,10 @@
+{
+  "name": "monitor-proposicoes-cmbh",
+  "version": "1.0.0",
+  "description": "Monitor de proposições da Câmara Municipal de Belo Horizonte",
+  "main": "monitor.js",
+  "dependencies": {
+    "nodemailer": "^6.9.0",
+    "cheerio": "^1.0.0"
+  }
+}
