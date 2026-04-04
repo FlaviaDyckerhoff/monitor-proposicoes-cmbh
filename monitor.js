@@ -41,12 +41,12 @@ async function buscarPagina(pagina, ano) {
     stormCodex: STORM_CODEX,
     mobile: '0',
     tipo: '',
-    numero: '',
+    numero: '[número]',
     ano: String(ano),
     buscarPorProtocolo: 'false',
-    autor: '',
-    assunto: '',
-    assunto2: '',
+    autor: '[autor]',
+    assunto: '[assunto]',
+    assunto2: '[assunto2]',
     fase: '[Selecione]',
     tramitando: 'Tanto faz',
   });
@@ -57,6 +57,7 @@ async function buscarPagina(pagina, ano) {
       'Content-Type': 'application/x-www-form-urlencoded',
       'User-Agent': 'Mozilla/5.0 (compatible; monitor-cmbh/1.0)',
       'Referer': 'https://www.cmbh.mg.gov.br/atividade-legislativa/pesquisar-proposicoes',
+      'Origin': 'https://www.cmbh.mg.gov.br',
     },
     body: params.toString(),
   });
@@ -79,8 +80,10 @@ function parsearHTML(html) {
   const total = matchTotal ? parseInt(matchTotal[1]) : null;
 
   $('ul.lista-pesquisas > li').each((_, el) => {
-    // ID único: extraído do div com id interno do SILAP
-    const divId = $(el).find('div.mensagem-voto').attr('id');
+    // ID único: extraído do data-caminho da span.detalhar (URL do SILAP com ?id=UUID)
+    const caminho = $(el).find('span.detalhar').first().attr('data-caminho') || '';
+    const matchId = caminho.match(/[?&]id=([^&]+)/);
+    const divId = matchId ? matchId[1] : caminho;
 
     // Tipo e número: "Projeto de Lei - 763/2026"
     const titulo = $(el).find('h3 > span.detalhar').first().text().trim();
@@ -93,9 +96,10 @@ function parsearHTML(html) {
     const autor = $(el).find('p:contains("Autoria:")').text().replace('Autoria:', '').trim();
     const ementa = $(el).find('p:contains("Ementa:")').text().replace('Ementa:', '').trim().substring(0, 200);
     const fase = $(el).find('p:contains("Fase Atual:")').text().replace('Fase Atual:', '').trim();
+    const link = caminho || '';
 
     if (divId) {
-      proposicoes.push({ id: divId, tipo, numero, ano, autor, ementa, fase });
+      proposicoes.push({ id: divId, tipo, numero, ano, autor, ementa, fase, link });
     }
   });
 
