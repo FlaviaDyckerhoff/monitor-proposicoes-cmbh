@@ -55,9 +55,12 @@ async function buscarPagina(pagina, ano) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'Mozilla/5.0 (compatible; monitor-cmbh/1.0)',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
       'Referer': 'https://www.cmbh.mg.gov.br/atividade-legislativa/pesquisar-proposicoes',
       'Origin': 'https://www.cmbh.mg.gov.br',
+      'Accept': 'text/html, */*; q=0.01',
+      'Accept-Language': 'pt-BR,pt;q=0.9',
+      'X-Requested-With': 'XMLHttpRequest',
     },
     body: params.toString(),
   });
@@ -70,20 +73,24 @@ async function buscarPagina(pagina, ano) {
   return await response.text();
 }
 
+function extrairIdDoCaminho(caminho) {
+  // data-caminho="http://cmbhsilint.cmbh.mg.gov.br/silinternet/servico/proposicao?id=2c907f769d129050019d209cda670eea"
+  const match = caminho && caminho.match(/[?&]id=([a-f0-9]+)/i);
+  return match ? match[1] : null;
+}
+
 function parsearHTML(html) {
   const $ = cheerio.load(html);
   const proposicoes = [];
 
-  // Total de itens
   const resumo = $('.resumoResultados').text().trim();
   const matchTotal = resumo.match(/total de (\d+) itens/);
   const total = matchTotal ? parseInt(matchTotal[1]) : null;
 
   $('ul.lista-pesquisas > li').each((_, el) => {
-    // ID único: extraído do data-caminho da span.detalhar (URL do SILAP com ?id=UUID)
-    const caminho = $(el).find('span.detalhar').first().attr('data-caminho') || '';
-    const matchId = caminho.match(/[?&]id=([^&]+)/);
-    const divId = matchId ? matchId[1] : caminho;
+    // ID via data-caminho da span.detalhar
+    const caminho = $(el).find('span.detalhar[data-caminho]').first().attr('data-caminho') || '';
+    const id = extrairIdDoCaminho(caminho);
 
     // Tipo e número: "Projeto de Lei - 763/2026"
     const titulo = $(el).find('h3 > span.detalhar').first().text().trim();
@@ -92,14 +99,12 @@ function parsearHTML(html) {
     const numero = matchTitulo ? matchTitulo[2] : '';
     const ano = matchTitulo ? matchTitulo[3] : '';
 
-    // Campos de texto
     const autor = $(el).find('p:contains("Autoria:")').text().replace('Autoria:', '').trim();
     const ementa = $(el).find('p:contains("Ementa:")').text().replace('Ementa:', '').trim().substring(0, 200);
     const fase = $(el).find('p:contains("Fase Atual:")').text().replace('Fase Atual:', '').trim();
-    const link = caminho || '';
 
-    if (divId) {
-      proposicoes.push({ id: divId, tipo, numero, ano, autor, ementa, fase, link });
+    if (id) {
+      proposicoes.push({ id, tipo, numero, ano, autor, ementa, fase });
     }
   });
 
@@ -110,28 +115,28 @@ async function buscarTodasProposicoes() {
   const ano = new Date().getFullYear();
   console.log(`🔍 Buscando proposições de ${ano}...`);
 
-  // Primeira página para descobrir total
   const html1 = await buscarPagina(1, ano);
   if (!html1) return [];
 
   const { proposicoes: pag1, total } = parsearHTML(html1);
   console.log(`📊 Total de proposições: ${total}`);
 
-  if (!total || total === 0) return pag1;
+  if (!total || total === 0) {
+    console.log('⚠️ Resposta: ', html1.substring(0, 200));
+    return pag1;
+  }
 
   const ITENS_POR_PAGINA = 7;
   const totalPaginas = Math.ceil(total / ITENS_POR_PAGINA);
-  console.log(`📄 Total de páginas: ${totalPaginas}`);
-
-  // Limita a 30 páginas (~210 proposições) para não sobrecarregar o servidor
-  // No primeiro run vai pegar as mais recentes; nas execuções seguintes pega só as novas
   const MAX_PAGINAS = 30;
   const paginasABuscar = Math.min(totalPaginas, MAX_PAGINAS);
+
+  console.log(`📄 Buscando ${paginasABuscar} de ${totalPaginas} páginas...`);
 
   const todas = [...pag1];
 
   for (let p = 2; p <= paginasABuscar; p++) {
-    await sleep(1500); // delay educado entre requisições
+    await sleep(1500);
     const html = await buscarPagina(p, ano);
     if (!html) break;
     const { proposicoes } = parsearHTML(html);
