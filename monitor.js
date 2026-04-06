@@ -99,9 +99,16 @@ function parsearHTML(html) {
     const numero = matchTitulo ? matchTitulo[2] : '';
     const ano = matchTitulo ? matchTitulo[3] : '';
 
-    const autor = $(el).find('p:contains("Autoria:")').text().replace('Autoria:', '').trim();
-    const ementa = $(el).find('p:contains("Ementa:")').text().replace('Ementa:', '').trim().substring(0, 200);
-    const fase = $(el).find('p:contains("Fase Atual:")').text().replace('Fase Atual:', '').trim();
+    const extrairCampo = (label) => {
+      const p = $(el).find('p').filter((_, p) => $(p).find('strong').text().includes(label)).first();
+      if (!p.length) return '-';
+      // Pega apenas os nós de texto diretos do <p>, ignorando o <strong>
+      return p.contents().filter((_, n) => n.type === 'text').text().trim().replace(/\s+/g, ' ') || '-';
+    };
+
+    const autor = extrairCampo('Autoria:');
+    const ementa = extrairCampo('Ementa:').substring(0, 200);
+    const fase = extrairCampo('Fase Atual:');
 
     if (id) {
       proposicoes.push({ id, tipo, numero, ano, autor, ementa, fase });
