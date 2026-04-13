@@ -10,6 +10,22 @@ const ARQUIVO_ESTADO = 'estado.json';
 const ENDPOINT = 'https://www.cmbh.mg.gov.br/sites/all/modules/proposicoes/pesquisar.php';
 const STORM_CODEX = '410d41a2a8d879f46dc8675cb1ea8030';
 
+// UUIDs internos de cada tipo — confirmados via DevTools
+const TIPOS = [
+  { nome: 'Projeto de Lei',                      uuid: '2c907f7801d41f2001024943e5ec004a' },
+  { nome: 'Indicação',                           uuid: '2c907f7801d41f200102494ac9500054' },
+  { nome: 'Requerimento',                        uuid: '2c907f7801d41f20010249482bef0051' },
+  { nome: 'Requerimento de Comissão',            uuid: '2c907f764335bd2b0143c0039e591b9b' },
+  { nome: 'Moção',                               uuid: '2c907f7801d41f2001024948eeed0052' },
+  { nome: 'Projeto de Decreto Legislativo',      uuid: '2c907f78078f0f0001084488c4bf60c4' },
+  { nome: 'Projeto de Resolução',                uuid: '2c907f7801d41f20010249450ee0004d' },
+  { nome: 'Proposta de Emenda à Lei Orgânica',   uuid: '2c907f7801d41f2001024946b79b004f' },
+];
+
+// Máximo de páginas por tipo (7 itens/pág = 35 proposições)
+// Suficiente para cobrir novidades entre execuções
+const MAX_PAGINAS_POR_TIPO = 5;
+
 function carregarEstado() {
   if (fs.existsSync(ARQUIVO_ESTADO))
     return JSON.parse(fs.readFileSync(ARQUIVO_ESTADO, 'utf8'));
@@ -24,7 +40,7 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function buscarPagina(pagina, ano) {
+async function buscarPagina(pagina, ano, tipoUuid) {
   const params = new URLSearchParams({
     metodo: '',
     nomeProposicao: '',
@@ -40,7 +56,7 @@ async function buscarPagina(pagina, ano) {
     buscaViaUrl: '',
     stormCodex: STORM_CODEX,
     mobile: '0',
-    tipo: '',
+    tipo: tipoUuid,
     numero: '[número]',
     ano: String(ano),
     buscarPorProtocolo: 'false',
@@ -66,7 +82,7 @@ async function buscarPagina(pagina, ano) {
   });
 
   if (!response.ok) {
-    console.error(`❌ Erro HTTP ${response.status} na página ${pagina}`);
+    console.error(`❌ Erro HTTP ${response.status}`);
     return null;
   }
 
@@ -74,9 +90,14 @@ async function buscarPagina(pagina, ano) {
 }
 
 function extrairIdDoCaminho(caminho) {
-  // data-caminho="http://cmbhsilint.cmbh.mg.gov.br/silinternet/servico/proposicao?id=2c907f769d129050019d209cda670eea"
   const match = caminho && caminho.match(/[?&]id=([a-f0-9]+)/i);
   return match ? match[1] : null;
+}
+
+function extrairCampo($, el, label) {
+  const p = $(el).find('p').filter((_, p) => $(p).find('strong').text().includes(label)).first();
+  if (!p.length) return '-';
+  return p.contents().filter((_, n) => n.type === 'text').text().trim().replace(/\s+/g, ' ') || '-';
 }
 
 function parsearHTML(html) {
@@ -85,74 +106,87 @@ function parsearHTML(html) {
 
   const resumo = $('.resumoResultados').text().trim();
   const matchTotal = resumo.match(/total de (\d+) itens/);
-  const total = matchTotal ? parseInt(matchTotal[1]) : null;
+  const total = matchTotal ? parseInt(matchTotal[1]) : 0;
 
   $('ul.lista-pesquisas > li').each((_, el) => {
-    // ID via data-caminho da span.detalhar
     const caminho = $(el).find('span.detalhar[data-caminho]').first().attr('data-caminho') || '';
     const id = extrairIdDoCaminho(caminho);
+    if (!id) return;
 
-    // Tipo e número: "Projeto de Lei - 763/2026"
     const titulo = $(el).find('h3 > span.detalhar').first().text().trim();
     const matchTitulo = titulo.match(/^(.+?)\s*-\s*(\d+)\/(\d+)$/);
     const tipo = matchTitulo ? matchTitulo[1].trim() : titulo;
     const numero = matchTitulo ? matchTitulo[2] : '';
     const ano = matchTitulo ? matchTitulo[3] : '';
 
-    const extrairCampo = (label) => {
-      const p = $(el).find('p').filter((_, p) => $(p).find('strong').text().includes(label)).first();
-      if (!p.length) return '-';
-      // Pega apenas os nós de texto diretos do <p>, ignorando o <strong>
-      return p.contents().filter((_, n) => n.type === 'text').text().trim().replace(/\s+/g, ' ') || '-';
-    };
+    const autor = extrairCampo($, el, 'Autoria:');
+    const fase = extrairCampo($, el, 'Fase Atual:');
 
-    const autor = extrairCampo('Autoria:');
-    const ementa = extrairCampo('Ementa:').substring(0, 200);
-    const fase = extrairCampo('Fase Atual:');
-
-    if (id) {
-      proposicoes.push({ id, tipo, numero, ano, autor, ementa, fase });
+    // PLs e similares têm "Ementa:"; REQ de Comissão tem "Finalidade:" + "Solicitação:"
+    let ementa = extrairCampo($, el, 'Ementa:');
+    if (ementa === '-') {
+      const solicitacao = extrairCampo($, el, 'Solicitação:');
+      const finalidade = extrairCampo($, el, 'Finalidade:');
+      if (finalidade !== '-') {
+        ementa = solicitacao !== '-' ? `[${solicitacao}] ${finalidade}` : finalidade;
+      }
     }
+    ementa = ementa.substring(0, 200);
+
+    proposicoes.push({ id, tipo, numero, ano, autor, ementa, fase });
   });
 
   return { proposicoes, total };
 }
 
-async function buscarTodasProposicoes() {
-  const ano = new Date().getFullYear();
-  console.log(`🔍 Buscando proposições de ${ano}...`);
+async function buscarNovasPorTipo(tipoNome, tipoUuid, idsVistos, ano) {
+  const novas = [];
 
-  const html1 = await buscarPagina(1, ano);
-  if (!html1) return [];
+  for (let pagina = 1; pagina <= MAX_PAGINAS_POR_TIPO; pagina++) {
+    if (pagina > 1) await sleep(1200);
 
-  const { proposicoes: pag1, total } = parsearHTML(html1);
-  console.log(`📊 Total de proposições: ${total}`);
-
-  if (!total || total === 0) {
-    console.log('⚠️ Resposta: ', html1.substring(0, 200));
-    return pag1;
-  }
-
-  const ITENS_POR_PAGINA = 7;
-  const totalPaginas = Math.ceil(total / ITENS_POR_PAGINA);
-  const MAX_PAGINAS = 30;
-  const paginasABuscar = Math.min(totalPaginas, MAX_PAGINAS);
-
-  console.log(`📄 Buscando ${paginasABuscar} de ${totalPaginas} páginas...`);
-
-  const todas = [...pag1];
-
-  for (let p = 2; p <= paginasABuscar; p++) {
-    await sleep(1500);
-    const html = await buscarPagina(p, ano);
+    const html = await buscarPagina(pagina, ano, tipoUuid);
     if (!html) break;
-    const { proposicoes } = parsearHTML(html);
-    todas.push(...proposicoes);
-    process.stdout.write(`\r📄 Página ${p}/${paginasABuscar} — ${todas.length} proposições`);
+
+    const { proposicoes, total } = parsearHTML(html);
+    if (proposicoes.length === 0) break;
+
+    let encontrouConhecido = false;
+    for (const p of proposicoes) {
+      if (idsVistos.has(p.id)) {
+        encontrouConhecido = true;
+        break;
+      }
+      novas.push(p);
+    }
+
+    const totalPaginas = Math.ceil(total / 7);
+    if (encontrouConhecido || pagina >= totalPaginas) break;
   }
 
-  console.log(`\n✅ Total coletado: ${todas.length} proposições`);
-  return todas;
+  return novas;
+}
+
+async function buscarTodasNovas(idsVistos) {
+  const ano = new Date().getFullYear();
+  console.log(`🔍 Buscando novidades de ${ano} por tipo...`);
+
+  const todasNovas = [];
+
+  for (const { nome, uuid } of TIPOS) {
+    process.stdout.write(`  🔎 ${nome}... `);
+    const novas = await buscarNovasPorTipo(nome, uuid, idsVistos, ano);
+    if (novas.length > 0) {
+      console.log(`${novas.length} nova(s)`);
+      todasNovas.push(...novas);
+    } else {
+      console.log('nenhuma');
+    }
+    await sleep(800);
+  }
+
+  console.log(`\n✅ Total de proposições novas: ${todasNovas.length}`);
+  return todasNovas;
 }
 
 async function enviarEmail(novas) {
@@ -173,7 +207,7 @@ async function enviarEmail(novas) {
     const rows = porTipo[tipo]
       .sort((a, b) => (parseInt(b.numero) || 0) - (parseInt(a.numero) || 0))
       .map(p => `<tr>
-        <td style="padding:8px;border-bottom:1px solid #eee"><strong>${p.numero || '-'}/${p.ano || '-'}</strong></td>
+        <td style="padding:8px;border-bottom:1px solid #eee;white-space:nowrap"><strong>${p.numero || '-'}/${p.ano || '-'}</strong></td>
         <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px">${p.autor || '-'}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px">${p.ementa || '-'}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;white-space:nowrap">${p.fase || '-'}</td>
@@ -192,7 +226,7 @@ async function enviarEmail(novas) {
           <tr style="background:#003366;color:white">
             <th style="padding:10px;text-align:left">Número/Ano</th>
             <th style="padding:10px;text-align:left">Autor</th>
-            <th style="padding:10px;text-align:left">Ementa</th>
+            <th style="padding:10px;text-align:left">Ementa / Finalidade</th>
             <th style="padding:10px;text-align:left">Fase</th>
           </tr>
         </thead>
@@ -221,20 +255,14 @@ async function enviarEmail(novas) {
   const estado = carregarEstado();
   const idsVistos = new Set(estado.proposicoes_vistas);
 
-  const proposicoes = await buscarTodasProposicoes();
-
-  if (proposicoes.length === 0) {
-    console.log('⚠️ Nenhuma proposição encontrada.');
-    process.exit(0);
-  }
-
-  const novas = proposicoes.filter(p => !idsVistos.has(p.id));
-  console.log(`🆕 Proposições novas: ${novas.length}`);
+  const novas = await buscarTodasNovas(idsVistos);
 
   if (novas.length > 0) {
     await enviarEmail(novas);
     novas.forEach(p => idsVistos.add(p.id));
     estado.proposicoes_vistas = Array.from(idsVistos);
+  } else {
+    console.log('✅ Sem novidades.');
   }
 
   estado.ultima_execucao = new Date().toISOString();
