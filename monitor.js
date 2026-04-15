@@ -98,9 +98,12 @@ function extrairCampo($, el, label) {
 }
 
 function extrairEmenta($, el) {
-  // Prioridade: Ementa → Finalidade (com Solicitação como prefixo) → Solicitação sozinha
+  // Prioridade: Ementa → Assunto (Indicações) → Finalidade (+Solicitação) → Solicitação sozinha
   const ementa = extrairCampo($, el, 'Ementa:');
   if (ementa !== '-') return ementa;
+
+  const assunto = extrairCampo($, el, 'Assunto:');
+  if (assunto !== '-') return assunto;
 
   const finalidade = extrairCampo($, el, 'Finalidade:');
   const solicitacao = extrairCampo($, el, 'Solicitação:');
