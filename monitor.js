@@ -10,7 +10,6 @@ const ARQUIVO_ESTADO = 'estado.json';
 const ENDPOINT = 'https://www.cmbh.mg.gov.br/sites/all/modules/proposicoes/pesquisar.php';
 const STORM_CODEX = '410d41a2a8d879f46dc8675cb1ea8030';
 
-// UUIDs internos de cada tipo — confirmados via DevTools
 const TIPOS = [
   { nome: 'Projeto de Lei',                      uuid: '2c907f7801d41f2001024943e5ec004a' },
   { nome: 'Indicação',                           uuid: '2c907f7801d41f200102494ac9500054' },
@@ -22,8 +21,6 @@ const TIPOS = [
   { nome: 'Proposta de Emenda à Lei Orgânica',   uuid: '2c907f7801d41f2001024946b79b004f' },
 ];
 
-// Máximo de páginas por tipo (7 itens/pág = 35 proposições)
-// Suficiente para cobrir novidades entre execuções
 const MAX_PAGINAS_POR_TIPO = 5;
 
 function carregarEstado() {
@@ -133,7 +130,10 @@ function parsearHTML(html) {
     }
     ementa = ementa.substring(0, 200);
 
-    proposicoes.push({ id, tipo, numero, ano, autor, ementa, fase });
+    // Link direto para o SILAP (visualização pública da tramitação)
+    const silLink = `http://cmbhsilint.cmbh.mg.gov.br/silinternet/servico/proposicao?id=${id}`;
+
+    proposicoes.push({ id, tipo, numero, ano, autor, ementa, fase, silLink });
   });
 
   return { proposicoes, total };
@@ -203,20 +203,25 @@ async function enviarEmail(novas) {
   });
 
   const linhas = Object.keys(porTipo).sort().map(tipo => {
-    const header = `<tr><td colspan="4" style="padding:10px 8px 4px;background:#f0f4f8;font-weight:bold;color:#003366;font-size:13px;border-top:2px solid #003366">${tipo} — ${porTipo[tipo].length} proposição(ões)</td></tr>`;
+    const header = `<tr><td colspan="5" style="padding:10px 8px 4px;background:#f0f4f8;font-weight:bold;color:#003366;font-size:13px;border-top:2px solid #003366">${tipo} — ${porTipo[tipo].length} proposição(ões)</td></tr>`;
     const rows = porTipo[tipo]
       .sort((a, b) => (parseInt(b.numero) || 0) - (parseInt(a.numero) || 0))
       .map(p => `<tr>
-        <td style="padding:8px;border-bottom:1px solid #eee;white-space:nowrap"><strong>${p.numero || '-'}/${p.ano || '-'}</strong></td>
+        <td style="padding:8px;border-bottom:1px solid #eee;white-space:nowrap">
+          <a href="${p.silLink}" style="color:#003366;font-weight:bold;text-decoration:none">${p.numero || '-'}/${p.ano || '-'}</a>
+        </td>
         <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px">${p.autor || '-'}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px">${p.ementa || '-'}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;white-space:nowrap">${p.fase || '-'}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;white-space:nowrap">
+          <a href="${p.silLink}" style="color:#003366">Ver tramitação</a>
+        </td>
       </tr>`).join('');
     return header + rows;
   }).join('');
 
   const html = `
-    <div style="font-family:Arial,sans-serif;max-width:900px;margin:0 auto">
+    <div style="font-family:Arial,sans-serif;max-width:1000px;margin:0 auto">
       <h2 style="color:#003366;border-bottom:2px solid #003366;padding-bottom:8px">
         🏛️ CMBH — ${novas.length} nova(s) proposição(ões)
       </h2>
@@ -228,6 +233,7 @@ async function enviarEmail(novas) {
             <th style="padding:10px;text-align:left">Autor</th>
             <th style="padding:10px;text-align:left">Ementa / Finalidade</th>
             <th style="padding:10px;text-align:left">Fase</th>
+            <th style="padding:10px;text-align:left">Link</th>
           </tr>
         </thead>
         <tbody>${linhas}</tbody>
