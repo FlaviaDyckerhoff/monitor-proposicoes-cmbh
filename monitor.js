@@ -97,6 +97,21 @@ function extrairCampo($, el, label) {
   return p.contents().filter((_, n) => n.type === 'text').text().trim().replace(/\s+/g, ' ') || '-';
 }
 
+function extrairEmenta($, el) {
+  // Prioridade: Ementa → Finalidade (com Solicitação como prefixo) → Solicitação sozinha
+  const ementa = extrairCampo($, el, 'Ementa:');
+  if (ementa !== '-') return ementa;
+
+  const finalidade = extrairCampo($, el, 'Finalidade:');
+  const solicitacao = extrairCampo($, el, 'Solicitação:');
+
+  if (finalidade !== '-') {
+    return solicitacao !== '-' ? `[${solicitacao}] ${finalidade}` : finalidade;
+  }
+  if (solicitacao !== '-') return solicitacao;
+  return '-';
+}
+
 function parsearHTML(html) {
   const $ = cheerio.load(html);
   const proposicoes = [];
@@ -118,19 +133,7 @@ function parsearHTML(html) {
 
     const autor = extrairCampo($, el, 'Autoria:');
     const fase = extrairCampo($, el, 'Fase Atual:');
-
-    // PLs e similares têm "Ementa:"; REQ de Comissão tem "Finalidade:" + "Solicitação:"
-    let ementa = extrairCampo($, el, 'Ementa:');
-    if (ementa === '-') {
-      const solicitacao = extrairCampo($, el, 'Solicitação:');
-      const finalidade = extrairCampo($, el, 'Finalidade:');
-      if (finalidade !== '-') {
-        ementa = solicitacao !== '-' ? `[${solicitacao}] ${finalidade}` : finalidade;
-      }
-    }
-    ementa = ementa.substring(0, 200);
-
-    // Link direto para o SILAP (visualização pública da tramitação)
+    const ementa = extrairEmenta($, el).substring(0, 250);
     const silLink = `http://cmbhsilint.cmbh.mg.gov.br/silinternet/servico/proposicao?id=${id}`;
 
     proposicoes.push({ id, tipo, numero, ano, autor, ementa, fase, silLink });
@@ -231,7 +234,7 @@ async function enviarEmail(novas) {
           <tr style="background:#003366;color:white">
             <th style="padding:10px;text-align:left">Número/Ano</th>
             <th style="padding:10px;text-align:left">Autor</th>
-            <th style="padding:10px;text-align:left">Ementa / Finalidade</th>
+            <th style="padding:10px;text-align:left">Ementa / Solicitação</th>
             <th style="padding:10px;text-align:left">Fase</th>
             <th style="padding:10px;text-align:left">Link</th>
           </tr>
