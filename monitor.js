@@ -229,7 +229,7 @@ async function enviarEmail(novas) {
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:1000px;margin:0 auto">
       <h2 style="color:#003366;border-bottom:2px solid #003366;padding-bottom:8px">
-        🏛️ CMBH — ${novas.length} nova(s) proposição(ões)
+        🏛️ Câmara Municipal de Belo Horizonte — ${novas.length} nova(s) proposição(ões)
       </h2>
       <p style="color:#666">Monitoramento automático — ${new Date().toLocaleString('pt-BR')}</p>
       <table style="width:100%;border-collapse:collapse;font-size:14px">
@@ -245,15 +245,15 @@ async function enviarEmail(novas) {
         <tbody>${linhas}</tbody>
       </table>
       <p style="margin-top:20px;font-size:12px;color:#999">
-        Acesse: <a href="https://www.cmbh.mg.gov.br/atividade-legislativa/pesquisar-proposicoes">cmbh.mg.gov.br</a>
+        Acesse: <a href="https://www.cmbh.mg.gov.br/atividade-legislativa/pesquisar-proposicoes">Câmara Municipal de Belo Horizonte</a>
       </p>
     </div>
   `;
 
   await transporter.sendMail({
-    from: `"Monitor CMBH" <${EMAIL_REMETENTE}>`,
+    from: `"Monitor Belo Horizonte" <${EMAIL_REMETENTE}>`,
     to: EMAIL_DESTINO,
-    subject: `🏛️ CMBH: ${novas.length} nova(s) proposição(ões) — ${new Date().toLocaleDateString('pt-BR')}`,
+    subject: `🏛️ Belo Horizonte: ${novas.length} nova(s) proposição(ões) — ${new Date().toLocaleDateString('pt-BR')}`,
     html,
   });
 
