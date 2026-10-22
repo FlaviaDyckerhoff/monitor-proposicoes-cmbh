@@ -19,7 +19,7 @@ async function resolveTarget(target) {
   const params = new URLSearchParams({
     metodo: '', nomeProposicao: '', paginaRequerida: '1', urlProposicao: '', idProposicao: '',
     buscarEmendas_proposicoes: '', idTipoEmenda: '', idTipoSubemenda: '', idTipoEmendaDeRedacao: '',
-    drupalUsername: 'deslogado-anonimo', drupalEmail: '', buscaViaUrl: '1', stormCodex: STORM_CODEX,
+    drupalUsername: 'deslogado-anonimo', drupalEmail: '', buscaViaUrl: '', stormCodex: STORM_CODEX,
     mobile: '0', tipo: TYPE_UUID[target.type], numero: target.number, ano: target.year,
     buscarPorProtocolo: 'false', autor: '[autor]', assunto: '[assunto]', assunto2: '[assunto2]',
     fase: '[Selecione]', tramitando: 'Tanto faz',
