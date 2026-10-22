@@ -1,0 +1,32 @@
+name: Resolver ID CMBH (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Alvos separados por vírgula. Ex.: PL:738:2026,REQCOM:62:2026"
+        required: true
+        type: string
+
+jobs:
+  resolver:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - name: Resolver número/ano para ID interno
+        env:
+          CMBH_TARGETS: ${{ inputs.targets }}
+        run: node resolve.js
+      - name: Publicar recibo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cmbh-resolver-${{ github.run_id }}
+          path: resultado-resolver.json
+          if-no-files-found: error
